@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lightninglabs/neutrino/filterdb"
-	"github.com/roasbeef/btcd/blockchain"
-	"github.com/roasbeef/btcd/chaincfg/chainhash"
-	"github.com/roasbeef/btcd/wire"
-	"github.com/roasbeef/btcutil"
-	"github.com/roasbeef/btcutil/gcs"
-	"github.com/roasbeef/btcutil/gcs/builder"
+	"github.com/wakiyamap/neutrino/filterdb"
+	"github.com/wakiyamap/monad/blockchain"
+	"github.com/wakiyamap/monad/chaincfg/chainhash"
+	"github.com/wakiyamap/monad/wire"
+	"github.com/wakiyamap/monautil"
+	"github.com/wakiyamap/monautil/gcs"
+	"github.com/wakiyamap/monautil/gcs/builder"
 )
 
 var (
@@ -454,7 +454,7 @@ func (s *ChainService) GetCFilter(blockHash chainhash.Hash,
 // TODO(roasbeef): add query option to indicate if the caller wants witness
 // data or not.
 func (s *ChainService) GetBlockFromNetwork(blockHash chainhash.Hash,
-	options ...QueryOption) (*btcutil.Block, error) {
+	options ...QueryOption) (*monautil.Block, error) {
 
 	// Fetch the corresponding block header from the database. If this
 	// isn't found, then we don't have the header for this block s we can't
@@ -474,7 +474,7 @@ func (s *ChainService) GetBlockFromNetwork(blockHash chainhash.Hash,
 	// which is always called single-threadedly. We don't check the block
 	// until after the query is finished, so we can just write to it
 	// naively.
-	var foundBlock *btcutil.Block
+	var foundBlock *monautil.Block
 	s.queryPeers(
 		// Send a wire.GetDataMsg
 		getData,
@@ -497,11 +497,11 @@ func (s *ChainService) GetBlockFromNetwork(blockHash chainhash.Hash,
 				if response.BlockHash() != blockHash {
 					return
 				}
-				block := btcutil.NewBlock(response)
+				block := monautil.NewBlock(response)
 
 				// Only set height if btcutil hasn't
 				// automagically put one in.
-				if block.Height() == btcutil.BlockHeightUnknown {
+				if block.Height() == monautil.BlockHeightUnknown {
 					block.SetHeight(int32(height))
 				}
 

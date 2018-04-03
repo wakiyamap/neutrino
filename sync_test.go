@@ -15,21 +15,21 @@ import (
 	"time"
 
 	"github.com/btcsuite/btclog"
-	"github.com/lightninglabs/neutrino"
-	"github.com/roasbeef/btcd/btcec"
-	"github.com/roasbeef/btcd/btcjson"
-	"github.com/roasbeef/btcd/chaincfg"
-	"github.com/roasbeef/btcd/chaincfg/chainhash"
-	"github.com/roasbeef/btcd/integration/rpctest"
-	"github.com/roasbeef/btcd/rpcclient"
-	"github.com/roasbeef/btcd/txscript"
-	"github.com/roasbeef/btcd/wire"
-	"github.com/roasbeef/btcutil"
-	"github.com/roasbeef/btcutil/gcs/builder"
-	"github.com/roasbeef/btcwallet/waddrmgr"
-	"github.com/roasbeef/btcwallet/wallet/txauthor"
-	"github.com/roasbeef/btcwallet/walletdb"
-	_ "github.com/roasbeef/btcwallet/walletdb/bdb"
+	"github.com/wakiyamap/neutrino"
+	"github.com/wakiyamap/monad/btcec"
+	"github.com/wakiyamap/monad/btcjson"
+	"github.com/wakiyamap/monad/chaincfg"
+	"github.com/wakiyamap/monad/chaincfg/chainhash"
+	"github.com/wakiyamap/monad/integration/rpctest"
+	"github.com/wakiyamap/monad/rpcclient"
+	"github.com/wakiyamap/monad/txscript"
+	"github.com/wakiyamap/monad/wire"
+	"github.com/wakiyamap/monautil"
+	"github.com/wakiyamap/monautil/gcs/builder"
+	"github.com/wakiyamap/monawallet/waddrmgr"
+	"github.com/wakiyamap/monawallet/wallet/txauthor"
+	"github.com/wakiyamap/monawallet/walletdb"
+	_ "github.com/wakiyamap/monawallet/walletdb/bdb"
 )
 
 var (
@@ -172,13 +172,13 @@ var (
 	// transactions we're interested in that are in the blockchain we're
 	// following as signalled by OnBlockConnected, OnBlockDisconnected,
 	// OnRecvTx, and OnRedeemingTx.
-	ourKnownTxsByBlock = make(map[chainhash.Hash][]*btcutil.Tx)
+	ourKnownTxsByBlock = make(map[chainhash.Hash][]*monautil.Tx)
 
 	// ourKnownTxsByFilteredBlock lets the rescan goroutine keep track of
 	// transactions we're interested in that are in the blockchain we're
 	// following as signalled by OnFilteredBlockConnected and
 	// OnFilteredBlockDisconnected.
-	ourKnownTxsByFilteredBlock = make(map[chainhash.Hash][]*btcutil.Tx)
+	ourKnownTxsByFilteredBlock = make(map[chainhash.Hash][]*monautil.Tx)
 )
 
 // secSource is an implementation of btcwallet/txauthor/SecretsSource that
@@ -189,9 +189,9 @@ type secSource struct {
 	params  *chaincfg.Params
 }
 
-func (s *secSource) add(privKey *btcec.PrivateKey) (btcutil.Address, error) {
-	pubKeyHash := btcutil.Hash160(privKey.PubKey().SerializeCompressed())
-	addr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, s.params)
+func (s *secSource) add(privKey *btcec.PrivateKey) (monautil.Address, error) {
+	pubKeyHash := monautil.Hash160(privKey.PubKey().SerializeCompressed())
+	addr, err := monautil.NewAddressWitnessPubKeyHash(pubKeyHash, s.params)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (s *secSource) add(privKey *btcec.PrivateKey) (btcutil.Address, error) {
 }
 
 // GetKey is required by the txscript.KeyDB interface
-func (s *secSource) GetKey(addr btcutil.Address) (*btcec.PrivateKey, bool,
+func (s *secSource) GetKey(addr monautil.Address) (*btcec.PrivateKey, bool,
 	error) {
 	privKey, ok := s.keys[addr.String()]
 	if !ok {
@@ -223,7 +223,7 @@ func (s *secSource) GetKey(addr btcutil.Address) (*btcec.PrivateKey, bool,
 }
 
 // GetScript is required by the txscript.ScriptDB interface
-func (s *secSource) GetScript(addr btcutil.Address) ([]byte, error) {
+func (s *secSource) GetScript(addr monautil.Address) ([]byte, error) {
 	script, ok := s.scripts[addr.String()]
 	if !ok {
 		return nil, fmt.Errorf("No script for address %s", addr)
@@ -448,7 +448,7 @@ func TestSetup(t *testing.T) {
 	// Do a rescan that searches only for a specific TXID
 	startBlock := waddrmgr.BlockStamp{Height: 795}
 	endBlock := waddrmgr.BlockStamp{Height: 801}
-	var foundTx *btcutil.Tx
+	var foundTx *monautil.Tx
 	err = svc.Rescan(
 		neutrino.StartBlock(&startBlock),
 		neutrino.EndBlock(&endBlock),
@@ -456,7 +456,7 @@ func TestSetup(t *testing.T) {
 		neutrino.NotificationHandlers(rpcclient.NotificationHandlers{
 			OnFilteredBlockConnected: func(height int32,
 				header *wire.BlockHeader,
-				relevantTxs []*btcutil.Tx) {
+				relevantTxs []*monautil.Tx) {
 				if height == 801 {
 					if len(relevantTxs) != 1 {
 						t.Fatalf("Didn't get expected "+
@@ -578,9 +578,9 @@ func TestSetup(t *testing.T) {
 	}
 
 	// Spend the outputs we sent ourselves over two blocks.
-	inSrc := func(tx wire.MsgTx) func(target btcutil.Amount) (
-		total btcutil.Amount, inputs []*wire.TxIn,
-		inputValues []btcutil.Amount, scripts [][]byte, err error) {
+	inSrc := func(tx wire.MsgTx) func(target monautil.Amount) (
+		total monautil.Amount, inputs []*wire.TxIn,
+		inputValues []monautil.Amount, scripts [][]byte, err error) {
 		ourIndex := 1 << 30 // Should work on 32-bit systems
 		for i, txo := range tx.TxOut {
 			if bytes.Equal(txo.PkScript, script1) ||
@@ -588,8 +588,8 @@ func TestSetup(t *testing.T) {
 				ourIndex = i
 			}
 		}
-		return func(target btcutil.Amount) (total btcutil.Amount,
-			inputs []*wire.TxIn, inputValues []btcutil.Amount,
+		return func(target monautil.Amount) (total monautil.Amount,
+			inputs []*wire.TxIn, inputValues []monautil.Amount,
 			scripts [][]byte, err error) {
 			if ourIndex == 1<<30 {
 				err = fmt.Errorf("Couldn't find our address " +
@@ -605,8 +605,8 @@ func TestSetup(t *testing.T) {
 					},
 				},
 			}
-			inputValues = []btcutil.Amount{
-				btcutil.Amount(tx.TxOut[ourIndex].Value)}
+			inputValues = []monautil.Amount{
+				monautil.Amount(tx.TxOut[ourIndex].Value)}
 			scripts = [][]byte{tx.TxOut[ourIndex].PkScript}
 			err = nil
 			return
@@ -728,7 +728,7 @@ func TestSetup(t *testing.T) {
 	// Generate a block with a nonstandard coinbase to generate a basic
 	// filter with 0 entries.
 	_, err = h1.GenerateAndSubmitBlockWithCustomCoinbaseOutputs(
-		[]*btcutil.Tx{}, rpctest.BlockVersion, time.Time{},
+		[]*monautil.Tx{}, rpctest.BlockVersion, time.Time{},
 		[]wire.TxOut{{
 			Value:    0,
 			PkScript: []byte{},
@@ -1360,7 +1360,7 @@ func testRandomBlocks(t *testing.T, svc *neutrino.ChainService,
 // from the rescan. At the end, the log should match one we precomputed based
 // on the flow of the test. The rescan starts at the genesis block and the
 // notifications continue until the `quit` channel is closed.
-func startRescan(t *testing.T, svc *neutrino.ChainService, addr btcutil.Address,
+func startRescan(t *testing.T, svc *neutrino.ChainService, addr monautil.Address,
 	startBlock *waddrmgr.BlockStamp, quit <-chan struct{}) (neutrino.Rescan,
 	<-chan error) {
 	rescan := svc.NewRescan(
@@ -1388,7 +1388,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr btcutil.Address,
 					curBlockHeight = height - 1
 					rescanMtx.Unlock()
 				},
-				OnRecvTx: func(tx *btcutil.Tx,
+				OnRecvTx: func(tx *monautil.Tx,
 					details *btcjson.BlockDetails) {
 					rescanMtx.Lock()
 					hash, err := chainhash.
@@ -1408,7 +1408,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr btcutil.Address,
 						[]byte("rv")...)
 					rescanMtx.Unlock()
 				},
-				OnRedeemingTx: func(tx *btcutil.Tx,
+				OnRedeemingTx: func(tx *monautil.Tx,
 					details *btcjson.BlockDetails) {
 					rescanMtx.Lock()
 					hash, err := chainhash.
@@ -1431,7 +1431,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr btcutil.Address,
 				OnFilteredBlockConnected: func(
 					height int32,
 					header *wire.BlockHeader,
-					relevantTxs []*btcutil.Tx) {
+					relevantTxs []*monautil.Tx) {
 					rescanMtx.Lock()
 					ourKnownTxsByFilteredBlock[header.BlockHash()] =
 						relevantTxs

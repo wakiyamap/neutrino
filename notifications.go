@@ -9,8 +9,8 @@ package neutrino
 import (
 	"errors"
 
-	"github.com/roasbeef/btcd/addrmgr"
-	"github.com/roasbeef/btcd/connmgr"
+	"github.com/wakiyamap/monad/addrmgr"
+	"github.com/wakiyamap/monad/connmgr"
 )
 
 type getConnCountMsg struct {

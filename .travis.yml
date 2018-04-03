@@ -10,7 +10,7 @@ install:
   - export PATH=$PATH:$PWD/linux-amd64/
   - mkdir -p $GOPATH/src/github.com/roasbeef/
   - pushd $GOPATH/src/github.com/roasbeef/
-  - git clone https://github.com/roasbeef/btcd
+  - git clone https://github.com/wakiyamap/monad
   - pushd btcd
   - glide install
   - go install . ./cmd/...

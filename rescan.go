@@ -9,15 +9,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lightninglabs/neutrino/headerfs"
-	"github.com/roasbeef/btcd/btcjson"
-	"github.com/roasbeef/btcd/chaincfg/chainhash"
-	"github.com/roasbeef/btcd/rpcclient"
-	"github.com/roasbeef/btcd/txscript"
-	"github.com/roasbeef/btcd/wire"
-	"github.com/roasbeef/btcutil"
-	"github.com/roasbeef/btcutil/gcs/builder"
-	"github.com/roasbeef/btcwallet/waddrmgr"
+	"github.com/wakiyamap/neutrino/headerfs"
+	"github.com/wakiyamap/monad/btcjson"
+	"github.com/wakiyamap/monad/chaincfg/chainhash"
+	"github.com/wakiyamap/monad/rpcclient"
+	"github.com/wakiyamap/monad/txscript"
+	"github.com/wakiyamap/monad/wire"
+	"github.com/wakiyamap/monautil"
+	"github.com/wakiyamap/monautil/gcs/builder"
+	"github.com/wakiyamap/monawallet/waddrmgr"
 )
 
 // rescanOptions holds the set of functional parameters for Rescan.
@@ -28,7 +28,7 @@ type rescanOptions struct {
 	startBlock     *waddrmgr.BlockStamp
 	startTime      time.Time
 	endBlock       *waddrmgr.BlockStamp
-	watchAddrs     []btcutil.Address
+	watchAddrs     []monautil.Address
 	watchOutPoints []wire.OutPoint
 	watchTxIDs     []chainhash.Hash
 	watchList      [][]byte
@@ -100,7 +100,7 @@ func EndBlock(endBlock *waddrmgr.BlockStamp) RescanOption {
 // function adds to the list of addresses being watched rather than replacing
 // the list. Each time a transaction spends to the specified address, the
 // outpoint is added to the WatchOutPoints list.
-func WatchAddrs(watchAddrs ...btcutil.Address) RescanOption {
+func WatchAddrs(watchAddrs ...monautil.Address) RescanOption {
 	return func(ro *rescanOptions) {
 		ro.watchAddrs = append(ro.watchAddrs, watchAddrs...)
 	}
@@ -444,7 +444,7 @@ func (s *ChainService) notifyBlock(ro *rescanOptions,
 
 	// Find relevant transactions based on watch list. If scanning is false,
 	// we can safely assume this block has no relevant transactions.
-	var relevantTxs []*btcutil.Tx
+	var relevantTxs []*monautil.Tx
 	if len(ro.watchList) != 0 && scanning {
 		// If we have a non-empty watch list, then we need to
 		// see if it matches the rescan's filters, so we get
@@ -476,7 +476,7 @@ func (s *ChainService) notifyBlock(ro *rescanOptions,
 				Time:   blockHeader.Timestamp.Unix(),
 			}
 
-			relevantTxs = make([]*btcutil.Tx, 0, len(block.Transactions()))
+			relevantTxs = make([]*monautil.Tx, 0, len(block.Transactions()))
 			for txIdx, tx := range block.Transactions() {
 				txDetails := blockDetails
 				txDetails.Index = txIdx
@@ -632,7 +632,7 @@ func (ro *rescanOptions) updateFilter(update *updateOptions,
 
 // watchingTxID returns whether the transaction matches the filter based
 // directly on its hash.
-func (ro *rescanOptions) watchingTxID(tx *btcutil.Tx) bool {
+func (ro *rescanOptions) watchingTxID(tx *monautil.Tx) bool {
 	for _, hash := range ro.watchTxIDs {
 		if hash == *tx.Hash() {
 			return true
@@ -643,7 +643,7 @@ func (ro *rescanOptions) watchingTxID(tx *btcutil.Tx) bool {
 
 // spendsWatchedOutpoint returns whether the transaction matches the filter by
 // spending a watched outpoint.
-func (ro *rescanOptions) spendsWatchedOutpoint(tx *btcutil.Tx) bool {
+func (ro *rescanOptions) spendsWatchedOutpoint(tx *monautil.Tx) bool {
 	for _, in := range tx.MsgTx().TxIn {
 		for _, op := range ro.watchOutPoints {
 			if in.PreviousOutPoint == op {
@@ -657,7 +657,7 @@ func (ro *rescanOptions) spendsWatchedOutpoint(tx *btcutil.Tx) bool {
 // paysWatchedAddr returns whether the transaction matches the filter by having
 // an output paying to a watched address. If that is the case, this also updates
 // the filter to watch the newly created output going forward.
-func (ro *rescanOptions) paysWatchedAddr(tx *btcutil.Tx) bool {
+func (ro *rescanOptions) paysWatchedAddr(tx *monautil.Tx) bool {
 	anyMatchingOutputs := false
 
 txOutLoop:
@@ -755,7 +755,7 @@ func (r *Rescan) Start() <-chan error {
 
 // updateOptions are a set of functional parameters for Update.
 type updateOptions struct {
-	addrs                    []btcutil.Address
+	addrs                    []monautil.Address
 	outPoints                []wire.OutPoint
 	txIDs                    []chainhash.Hash
 	rewind                   uint32
@@ -770,7 +770,7 @@ func defaultUpdateOptions() *updateOptions {
 }
 
 // AddAddrs adds addresses to the filter.
-func AddAddrs(addrs ...btcutil.Address) UpdateOption {
+func AddAddrs(addrs ...monautil.Address) UpdateOption {
 	return func(uo *updateOptions) {
 		uo.addrs = append(uo.addrs, addrs...)
 	}

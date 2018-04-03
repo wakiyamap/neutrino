@@ -1,9 +1,9 @@
-package: github.com/lightninglabs/neutrino
+package: github.com/wakiyamap/neutrino
 import:
 - package: github.com/coreos/bbolt
   version: 4f5275f4ebbf6fe7cb772de987fa96ee674460a7
-- package: github.com/roasbeef/btcd
-  version: 4844a17dbc7797459df38c724758c02a89c5e8e9
+- package: github.com/wakiyamap/monad
+  version: 334ed97b997397b5357ef335a2362902efbfdaea
   subpackages:
   - blockchain
   - btcec
@@ -13,15 +13,15 @@ import:
   - txscript
   - wire
 - package: github.com/btcsuite/btclog
-- package: github.com/roasbeef/btcutil
-  version: 071180c7540a3ac6db95d88fc8709bb83c0b47d4
+- package: github.com/wakiyamap/monautil
+  version: 5633c0880c69eabe323bf209e7878b5e4aa29595
   subpackages:
   - base58
   - gcs
   - gcs/builder
   - hdkeychain
-- package: github.com/roasbeef/btcwallet
-  version: 45445d1b09670109410174cb01fab0b133e3a904
+- package: github.com/wakiyamap/monawallet
+  version: 4c1cba2005c854f097570e706e8b1a89a359497c
   subpackages:
   - waddrmgr
   - wallet/txauthor
