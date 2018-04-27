@@ -1,5 +1,5 @@
-hash: c9559aad4ebba263a319c587bde77b224dd0240f3b9ff5a50eea77063fb300cb
-updated: 2018-04-04T01:15:16.46606502+09:00
+hash: b44e9e64f4b95ef976315115bf757f06b41181b9f03cebef1a2ec6922ae0f9f6
+updated: 2018-04-27T17:20:31.607687507+09:00
 imports:
 - name: github.com/aead/siphash
   version: e404fcfc888570cadd1610538e2dbc89f66af814
@@ -50,7 +50,7 @@ imports:
 - name: github.com/wakiyamap/lyra2rev2
   version: bae9ad2043bb55facb14c4918e909f88a7d3ed84
 - name: github.com/wakiyamap/monad
-  version: 334ed97b997397b5357ef335a2362902efbfdaea
+  version: 6239eb24d1f858927560d63e77073bd361d977bc
   subpackages:
   - addrmgr
   - blockchain
