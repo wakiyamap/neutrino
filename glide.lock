@@ -1,5 +1,5 @@
-hash: da989af99b8a2a995b05c489e2d96c655a776fafb3e02ef091cb3657ff09532c
-updated: 2018-07-22T10:05:38.552572986+09:00
+hash: fac634480f7c5c8720767f002401887277c5478acd2351de986bb2f99333c875
+updated: 2018-07-22T16:21:47.733537875+09:00
 imports:
 - name: github.com/aead/siphash
   version: e404fcfc888570cadd1610538e2dbc89f66af814
@@ -89,7 +89,7 @@ imports:
   - gcs/builder
   - hdkeychain
 - name: github.com/wakiyamap/monawallet
-  version: 4c1cba2005c854f097570e706e8b1a89a359497c
+  version: 32ef0c50714d03c5ce36bc32f43f3136f7b47d0e
   subpackages:
   - internal/helpers
   - internal/zero
