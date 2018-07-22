@@ -1,5 +1,5 @@
-hash: b44e9e64f4b95ef976315115bf757f06b41181b9f03cebef1a2ec6922ae0f9f6
-updated: 2018-04-27T17:20:31.607687507+09:00
+hash: da989af99b8a2a995b05c489e2d96c655a776fafb3e02ef091cb3657ff09532c
+updated: 2018-07-22T10:05:38.552572986+09:00
 imports:
 - name: github.com/aead/siphash
   version: e404fcfc888570cadd1610538e2dbc89f66af814
@@ -27,8 +27,25 @@ imports:
   - salsa20/salsa
   - scrypt
   - ssh/terminal
+- name: github.com/btcsuite/goleveldb
+  version: 7834afc9e8cd15233b6c3d97e12674a31ca24602
+  subpackages:
+  - leveldb
+  - leveldb/cache
+  - leveldb/comparer
+  - leveldb/errors
+  - leveldb/filter
+  - leveldb/iterator
+  - leveldb/journal
+  - leveldb/memdb
+  - leveldb/opt
+  - leveldb/storage
+  - leveldb/table
+  - leveldb/util
 - name: github.com/btcsuite/seelog
   version: 556d4dde7873880ceb8b758dce71f4906162322a
+- name: github.com/btcsuite/snappy-go
+  version: 0bdef8d067237991ddaa1bb6072a740bc40601ba
 - name: github.com/btcsuite/websocket
   version: 31079b6807923eb23992c421b114992b95131b55
 - name: github.com/coreos/bbolt
@@ -47,10 +64,8 @@ imports:
   version: 1679536dcc895411a9f5848d9a0250be7856448c
 - name: github.com/kkdai/bstream
   version: f391b8402d23024e7c0f624b31267a89998fca95
-- name: github.com/wakiyamap/lyra2rev2
-  version: bae9ad2043bb55facb14c4918e909f88a7d3ed84
 - name: github.com/wakiyamap/monad
-  version: 6239eb24d1f858927560d63e77073bd361d977bc
+  version: 2c923c74583e2917c59a41d61584c8a40be28060
   subpackages:
   - addrmgr
   - blockchain
@@ -66,7 +81,7 @@ imports:
   - txscript
   - wire
 - name: github.com/wakiyamap/monautil
-  version: 5633c0880c69eabe323bf209e7878b5e4aa29595
+  version: c1fba54cb210ffa57c4cb5e40fa09c789daa56b8
   subpackages:
   - base58
   - bech32

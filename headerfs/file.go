@@ -2,6 +2,7 @@ package headerfs
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/wakiyamap/monad/chaincfg/chainhash"
 	"github.com/wakiyamap/monad/wire"
@@ -19,7 +20,7 @@ func (h *headerStore) appendRaw(header []byte) error {
 // readRaw reads a raw header from disk from a particular seek distance. The
 // amount of bytes read past the seek distance is determined by the specified
 // header type.
-func (h *headerStore) readRaw(seekDist int64) ([]byte, error) {
+func (h *headerStore) readRaw(seekDist uint64) ([]byte, error) {
 	var headerSize uint32
 
 	// Based on the defined header type, we'll determine the number of
@@ -27,10 +28,12 @@ func (h *headerStore) readRaw(seekDist int64) ([]byte, error) {
 	switch h.indexType {
 	case Block:
 		headerSize = 80
+
 	case RegularFilter:
-		fallthrough
-	case ExtendedFilter:
 		headerSize = 32
+
+	default:
+		return nil, fmt.Errorf("unknown index type: %v", h.indexType)
 	}
 
 	// TODO(roasbeef): add buffer pool
@@ -39,7 +42,7 @@ func (h *headerStore) readRaw(seekDist int64) ([]byte, error) {
 	// for that number of bytes, and read directly from the file into the
 	// buffer.
 	rawHeader := make([]byte, headerSize)
-	if _, err := h.file.ReadAt(rawHeader, seekDist); err != nil {
+	if _, err := h.file.ReadAt(rawHeader, int64(seekDist)); err != nil {
 		return nil, err
 	}
 
@@ -48,10 +51,10 @@ func (h *headerStore) readRaw(seekDist int64) ([]byte, error) {
 
 // readHeader reads a full block header from the flat-file. The header read is
 // determined by the hight value.
-func (h *BlockHeaderStore) readHeader(height int64) (*wire.BlockHeader, error) {
+func (h *BlockHeaderStore) readHeader(height uint32) (*wire.BlockHeader, error) {
 	// Each header is 80 bytes, so using this information, we'll seek a
 	// distance to cover that height based on the size of block headers.
-	seekDistance := height * 80
+	seekDistance := uint64(height) * 80
 
 	// With the distance calculated, we'll raw a raw header start from that
 	// offset.
@@ -72,8 +75,8 @@ func (h *BlockHeaderStore) readHeader(height int64) (*wire.BlockHeader, error) {
 
 // readHeader reads a single filter header at the specified height from the
 // flat files on disk.
-func (f *FilterHeaderStore) readHeader(height int64) (*chainhash.Hash, error) {
-	seekDistance := height * 32
+func (f *FilterHeaderStore) readHeader(height uint32) (*chainhash.Hash, error) {
+	seekDistance := uint64(height) * 32
 
 	rawHeader, err := f.readRaw(seekDistance)
 	if err != nil {

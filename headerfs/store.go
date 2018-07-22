@@ -54,8 +54,6 @@ func newHeaderStore(db walletdb.DB, filePath string,
 		flatFileName = "block_headers.bin"
 	case RegularFilter:
 		flatFileName = "reg_filter_headers.bin"
-	case ExtendedFilter:
-		flatFileName = "ext_filter_headers.bin"
 	default:
 		return nil, fmt.Errorf("unrecognized filter type: %v", hType)
 	}
@@ -140,7 +138,7 @@ func NewBlockHeaderStore(filePath string, db walletdb.DB,
 
 	// First, we'll compute the size of the current file so we can
 	// calculate the latest header written to disk.
-	fileHeight := (fileInfo.Size() / 80) - 1
+	fileHeight := uint32(fileInfo.Size()/80) - 1
 
 	// Using the file's current height, fetch the latest on-disk header.
 	latestFileHeader, err := bhs.readHeader(fileHeight)
@@ -149,7 +147,7 @@ func NewBlockHeaderStore(filePath string, db walletdb.DB,
 	}
 
 	// If the index's tip hash, and the file on-disk match, then we're
-	// doing here.
+	// done here.
 	latestBlockHash := latestFileHeader.BlockHash()
 	if tipHash.IsEqual(&latestBlockHash) {
 		return bhs, nil
@@ -161,7 +159,7 @@ func NewBlockHeaderStore(filePath string, db walletdb.DB,
 
 	// Otherwise, we'll need to truncate the file until it matches the
 	// current index tip.
-	for fileHeight > int64(tipHeight) {
+	for fileHeight > tipHeight {
 		if bhs.singleTruncate(); err != nil {
 			return nil, err
 		}
@@ -187,7 +185,7 @@ func (h *BlockHeaderStore) FetchHeader(hash *chainhash.Hash) (*wire.BlockHeader,
 	}
 
 	// With the height known, we can now read the header from disk.
-	header, err := h.readHeader(int64(height))
+	header, err := h.readHeader(height)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -205,7 +203,7 @@ func (h *BlockHeaderStore) FetchHeaderByHeight(height uint32) (*wire.BlockHeader
 	// For this query, we don't need to consult the index, and can instead
 	// just seek into the flat file based on the target height and return
 	// the full header.
-	return h.readHeader(int64(height))
+	return h.readHeader(height)
 }
 
 // HeightFromHash returns the height of a particular block header given its
@@ -232,7 +230,7 @@ func (h *BlockHeaderStore) RollbackLastBlock() (*waddrmgr.BlockStamp, error) {
 	// With this height obtained, we'll use it to read the latest header
 	// from disk, so we can populate our return value which requires the
 	// prev header hash.
-	bestHeader, err := h.readHeader(int64(chainTipHeight))
+	bestHeader, err := h.readHeader(chainTipHeight)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +403,7 @@ func (h *BlockHeaderStore) CheckConnectivity() error {
 		// With the height extracted, we'll now read the _last_ block
 		// header within the file before we kick off our connectivity
 		// loop.
-		tipHeight := int64(binary.BigEndian.Uint32(tipHeightBytes))
+		tipHeight := binary.BigEndian.Uint32(tipHeightBytes)
 		header, err := h.readHeader(tipHeight)
 		if err != nil {
 			return err
@@ -434,7 +432,7 @@ func (h *BlockHeaderStore) CheckConnectivity() error {
 				return fmt.Errorf("index and on-disk file out of sync "+
 					"at height: %v", height)
 			}
-			indexHeight := int64(binary.BigEndian.Uint32(indexHeightBytes))
+			indexHeight := binary.BigEndian.Uint32(indexHeightBytes)
 
 			// With the index entry retrieved, we'll now assert
 			// that the height matches up with our current height
@@ -476,7 +474,7 @@ func (h *BlockHeaderStore) ChainTip() (*wire.BlockHeader, uint32, error) {
 		return nil, 0, err
 	}
 
-	latestHeader, err := h.readHeader(int64(tipHeight))
+	latestHeader, err := h.readHeader(tipHeight)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -527,7 +525,7 @@ func NewFilterHeaderStore(filePath string, db walletdb.DB,
 		switch filterType {
 		case RegularFilter:
 			basicFilter, err := builder.BuildBasicFilter(
-				netParams.GenesisBlock,
+				netParams.GenesisBlock, nil,
 			)
 			if err != nil {
 				return nil, err
@@ -541,21 +539,8 @@ func NewFilterHeaderStore(filePath string, db walletdb.DB,
 				return nil, err
 			}
 
-		case ExtendedFilter:
-			extFilter, err := builder.BuildExtFilter(
-				netParams.GenesisBlock,
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			genesisFilterHash, err = builder.MakeHeaderForFilter(
-				extFilter,
-				netParams.GenesisBlock.Header.PrevBlock,
-			)
-			if err != nil {
-				return nil, err
-			}
+		default:
+			return nil, fmt.Errorf("unknown filter type: %v", filterType)
 		}
 
 		genesisHeader := FilterHeader{
@@ -579,7 +564,7 @@ func NewFilterHeaderStore(filePath string, db walletdb.DB,
 
 	// First, we'll compute the size of the current file so we can
 	// calculate the latest header written to disk.
-	fileHeight := (fileInfo.Size() / 32) - 1
+	fileHeight := uint32(fileInfo.Size()/32) - 1
 
 	// Using the file's current height, fetch the latest on-disk header.
 	latestFileHeader, err := fhs.readHeader(fileHeight)
@@ -595,7 +580,7 @@ func NewFilterHeaderStore(filePath string, db walletdb.DB,
 
 	// Otherwise, we'll need to truncate the file until it matches the
 	// current index tip.
-	for fileHeight > int64(tipHeight) {
+	for fileHeight > tipHeight {
 		if fhs.singleTruncate(); err != nil {
 			return nil, err
 		}
@@ -620,7 +605,7 @@ func (f *FilterHeaderStore) FetchHeader(hash *chainhash.Hash) (*chainhash.Hash, 
 		return nil, err
 	}
 
-	return f.readHeader(int64(height))
+	return f.readHeader(height)
 }
 
 // FetchHeaderByHeight returns the filter header for a particular block height.
@@ -629,7 +614,7 @@ func (f *FilterHeaderStore) FetchHeaderByHeight(height uint32) (*chainhash.Hash,
 	f.mtx.RLock()
 	defer f.mtx.RUnlock()
 
-	return f.readHeader(int64(height))
+	return f.readHeader(height)
 }
 
 // FilterHeader represents a filter header (basic or extended). The filter
@@ -707,12 +692,12 @@ func (f *FilterHeaderStore) ChainTip() (*chainhash.Hash, uint32, error) {
 
 	_, tipHeight, err := f.chainTip()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("unable to fetch chain tip: %v", err)
 	}
 
-	latestHeader, err := f.readHeader(int64(tipHeight))
+	latestHeader, err := f.readHeader(tipHeight)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("unable to read header: %v", err)
 	}
 
 	return latestHeader, tipHeight, nil
@@ -737,7 +722,7 @@ func (f *FilterHeaderStore) RollbackLastBlock(newTip *chainhash.Hash) (*waddrmgr
 	// With this height obtained, we'll use it to read what will be the new
 	// chain tip from disk.
 	newHeightTip := chainTipHeight - 1
-	newHeaderTip, err := f.readHeader(int64(newHeightTip))
+	newHeaderTip, err := f.readHeader(newHeightTip)
 	if err != nil {
 		return nil, err
 	}
