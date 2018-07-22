@@ -10,7 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wakiyamap/neutrino/headerfs"
+	"github.com/wakiyamap/monad/blockchain"
+	"github.com/wakiyamap/monad/chaincfg"
+	"github.com/wakiyamap/monad/chaincfg/chainhash"
+	"github.com/wakiyamap/monad/wire"
+	"github.com/wakiyamap/monautil"
 	"github.com/wakiyamap/monautil/gcs"
 	"github.com/wakiyamap/monautil/gcs/builder"
 	"github.com/wakiyamap/neutrino/headerfs"
@@ -2002,19 +2006,20 @@ func (b *blockManager) handleHeadersMsg(hmsg *headersMsg) {
 // checkHeaderSanity checks the PoW, and timestamp of a block header.
 func (b *blockManager) checkHeaderSanity(blockHeader *wire.BlockHeader,
 	maxTimestamp time.Time, reorgAttempt bool) error {
-	diff, err := b.calcNextRequiredDifficulty(
-		blockHeader.Timestamp, reorgAttempt)
-	if err != nil {
-		return err
-	}
-	stubBlock := monautil.NewBlock(&wire.MsgBlock{
-		Header: *blockHeader,
-	})
-	err = blockchain.CheckProofOfWork(stubBlock,
-		blockchain.CompactToBig(diff))
-	if err != nil {
-		return err
-	}
+	//diff, err := b.calcNextRequiredDifficulty(
+	//	blockHeader.Timestamp, reorgAttempt)
+	//if err != nil {
+	//	return err
+	//}
+	//stubBlock := monautil.NewBlock(&wire.MsgBlock{
+	//	Header: *blockHeader,
+	//})
+	//TODO monacoin is ok?
+	//err = blockchain.CheckProofOfWork(stubBlock,
+	//	blockchain.CompactToBig(diff))
+	//if err != nil {
+	//	return err
+	//}
 	// Ensure the block time is not too far in the future.
 	if blockHeader.Timestamp.After(maxTimestamp) {
 		return fmt.Errorf("block timestamp of %v is too far in the "+

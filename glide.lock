@@ -1,5 +1,5 @@
-hash: fac634480f7c5c8720767f002401887277c5478acd2351de986bb2f99333c875
-updated: 2018-07-22T16:21:47.733537875+09:00
+hash: 410a065da013061ff5d6b232378a92f15eae23b2c75d363b25288583dd5570f1
+updated: 2018-07-22T18:38:08.599857558+09:00
 imports:
 - name: github.com/aead/siphash
   version: e404fcfc888570cadd1610538e2dbc89f66af814
@@ -65,7 +65,7 @@ imports:
 - name: github.com/kkdai/bstream
   version: f391b8402d23024e7c0f624b31267a89998fca95
 - name: github.com/wakiyamap/monad
-  version: 2c923c74583e2917c59a41d61584c8a40be28060
+  version: b5c77b19b67103aa60671d5997f1ad4c7e963d11
   subpackages:
   - addrmgr
   - blockchain
@@ -89,7 +89,7 @@ imports:
   - gcs/builder
   - hdkeychain
 - name: github.com/wakiyamap/monawallet
-  version: 32ef0c50714d03c5ce36bc32f43f3136f7b47d0e
+  version: b2e8277fc2277c65de2ec663c7ba77d130b30364
   subpackages:
   - internal/helpers
   - internal/zero

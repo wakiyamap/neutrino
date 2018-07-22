@@ -33,7 +33,7 @@ type rescanOptions struct {
 
 	endBlock *waddrmgr.BlockStamp
 
-	watchAddrs  []btcutil.Address
+	watchAddrs  []monautil.Address
 	watchInputs []InputWithScript
 	watchList   [][]byte
 	txIdx       uint32

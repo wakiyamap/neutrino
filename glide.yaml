@@ -3,7 +3,7 @@ import:
 - package: github.com/coreos/bbolt
   version: 4f5275f4ebbf6fe7cb772de987fa96ee674460a7
 - package: github.com/wakiyamap/monad
-  version: 2c923c74583e2917c59a41d61584c8a40be28060
+  version: b5c77b19b67103aa60671d5997f1ad4c7e963d11
   subpackages:
   - blockchain
   - btcec
@@ -21,7 +21,7 @@ import:
   - gcs/builder
   - hdkeychain
 - package: github.com/wakiyamap/monawallet
-  version: 32ef0c50714d03c5ce36bc32f43f3136f7b47d0e
+  version: b2e8277fc2277c65de2ec663c7ba77d130b30364
   subpackages:
   - waddrmgr
   - wallet/txauthor

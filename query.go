@@ -831,6 +831,7 @@ func (s *ChainService) GetBlockFromNetwork(blockHash chainhash.Hash,
 					// checked during header
 					// synchronization
 					s.chainParams.PowLimit,
+					int32(height),
 					s.timeSource,
 				); err != nil {
 					log.Warnf("Invalid block for %s "+
