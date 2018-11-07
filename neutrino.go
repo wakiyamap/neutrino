@@ -22,6 +22,7 @@ import (
 	"github.com/wakiyamap/monautil"
 	"github.com/wakiyamap/monawallet/waddrmgr"
 	"github.com/wakiyamap/monawallet/walletdb"
+	"github.com/wakiyamap/neutrino/cache/lru"
 	"github.com/wakiyamap/neutrino/filterdb"
 	"github.com/wakiyamap/neutrino/headerfs"
 )
@@ -42,7 +43,7 @@ var (
 
 	// UserAgentVersion is the user agent version and is used to help
 	// identify ourselves to other bitcoin peers.
-	UserAgentVersion = "0.0.1-alpha"
+	UserAgentVersion = "0.0.4-beta"
 
 	// Services describes the services that are supported by the server.
 	Services = wire.SFNodeWitness | wire.SFNodeCF
@@ -66,6 +67,14 @@ var (
 	// DisableDNSSeed disables getting initial addresses for Bitcoin nodes
 	// from DNS.
 	DisableDNSSeed = false
+
+	// DefaultFilterCacheSize is the size (in bytes) of filters neutrino will
+	// keep in memory if no size is specified in the neutrino.Config.
+	DefaultFilterCacheSize uint64 = 4096 * 1000
+
+	// DefaultBlockCacheSize is the size (in bytes) of blocks neutrino will
+	// keep in memory if no size is specified in the neutrino.Config.
+	DefaultBlockCacheSize uint64 = 4096 * 10 * 1000 // 40 MB
 )
 
 // updatePeerHeightsMsg is a message sent from the blockmanager to the server
@@ -166,11 +175,12 @@ func newServerPeer(s *ChainService, isPersistent bool) *ServerPeer {
 // newestBlock returns the current best block hash and height using the format
 // required by the configuration for the peer package.
 func (sp *ServerPeer) newestBlock() (*chainhash.Hash, int32, error) {
-	best, err := sp.server.BestSnapshot()
+	bestHeader, bestHeight, err := sp.server.BlockHeaders.ChainTip()
 	if err != nil {
 		return nil, 0, err
 	}
-	return &best.Hash, best.Height, nil
+	bestHash := bestHeader.BlockHash()
+	return &bestHash, int32(bestHeight), nil
 }
 
 // addKnownAddresses adds the given addresses to the set of known addresses to
@@ -238,7 +248,7 @@ func (sp *ServerPeer) OnVerAck(_ *peer.Peer, msg *wire.MsgVerAck) {
 // OnVersion is invoked when a peer receives a version bitcoin message
 // and is used to negotiate the protocol version details as well as kick start
 // the communications.
-func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) {
+func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgReject {
 	// Add the remote peer time as a sample for creating an offset against
 	// the local clock to keep the network time in sync.
 	sp.server.timeSource.AddTimeSample(sp.Addr(), msg.Timestamp)
@@ -253,7 +263,7 @@ func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) {
 		log.Infof("Disconnecting peer %v, cannot serve compact "+
 			"filters", sp)
 		sp.Disconnect()
-		return
+		return nil
 	}
 
 	// Signal the block manager this peer is a new sync candidate.
@@ -281,6 +291,7 @@ func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) {
 
 	// Add valid peer to the server.
 	sp.server.AddPeer(sp)
+	return nil
 }
 
 // OnInv is invoked when a peer receives an inv bitcoin message and is
@@ -475,6 +486,14 @@ type Config struct {
 	// along with regular outbound connection attempts will use this
 	// instead.
 	NameResolver func(host string) ([]net.IP, error)
+
+	// FilterCacheSize indicates the size (in bytes) of filters the cache will
+	// hold in memory at most.
+	FilterCacheSize uint64
+
+	// BlockCacheSize indicates the size (in bytes) of blocks the block
+	// cache will hold in memory at most.
+	BlockCacheSize uint64
 }
 
 // ChainService is instantiated with functional options
@@ -487,8 +506,21 @@ type ChainService struct {
 	shutdown      int32
 
 	FilterDB         filterdb.FilterDatabase
-	BlockHeaders     *headerfs.BlockHeaderStore
+	BlockHeaders     headerfs.BlockHeaderStore
 	RegFilterHeaders *headerfs.FilterHeaderStore
+
+	FilterCache *lru.Cache
+	BlockCache  *lru.Cache
+
+	// queryPeers will be called to send messages to one or more peers,
+	// expecting a response.
+	queryPeers func(wire.Message, func(*ServerPeer, wire.Message,
+		chan<- struct{}), ...QueryOption)
+
+	// queryBatch will be called to distribute a batch of messages across
+	// our connected peers.
+	queryBatch func([]wire.Message, func(*ServerPeer, wire.Message,
+		wire.Message) bool, <-chan struct{}, ...QueryOption)
 
 	chainParams       chaincfg.Params
 	addrManager       *addrmgr.AddrManager
@@ -505,6 +537,7 @@ type ChainService struct {
 	services          wire.ServiceFlag
 	blockSubscribers  map[*blockSubscription]struct{}
 	mtxSubscribers    sync.RWMutex
+	utxoScanner       *UtxoScanner
 
 	// TODO: Add a map for more granular exclusion?
 	mtxCFilter sync.Mutex
@@ -578,6 +611,20 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		dialer:              dialer,
 	}
 
+	// We set the queryPeers method to point to queryChainServicePeers,
+	// passing a reference to the newly created ChainService.
+	s.queryPeers = func(msg wire.Message, f func(*ServerPeer,
+		wire.Message, chan<- struct{}), qo ...QueryOption) {
+		queryChainServicePeers(&s, msg, f, qo...)
+	}
+
+	// We do the same for queryBatch.
+	s.queryBatch = func(msgs []wire.Message, f func(*ServerPeer,
+		wire.Message, wire.Message) bool, q <-chan struct{},
+		qo ...QueryOption) {
+		queryChainServiceBatch(&s, msgs, f, q, qo...)
+	}
+
 	var err error
 
 	s.FilterDB, err = filterdb.New(cfg.Database, cfg.ChainParams)
@@ -585,13 +632,27 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		return nil, err
 	}
 
-	s.BlockHeaders, err = headerfs.NewBlockHeaderStore(cfg.DataDir,
-		cfg.Database, &cfg.ChainParams)
+	filterCacheSize := DefaultFilterCacheSize
+	if cfg.FilterCacheSize != 0 {
+		filterCacheSize = cfg.FilterCacheSize
+	}
+	s.FilterCache = lru.NewCache(filterCacheSize)
+
+	blockCacheSize := DefaultBlockCacheSize
+	if cfg.BlockCacheSize != 0 {
+		blockCacheSize = cfg.BlockCacheSize
+	}
+	s.BlockCache = lru.NewCache(blockCacheSize)
+
+	s.BlockHeaders, err = headerfs.NewBlockHeaderStore(
+		cfg.DataDir, cfg.Database, &cfg.ChainParams,
+	)
 	if err != nil {
 		return nil, err
 	}
-	s.RegFilterHeaders, err = headerfs.NewFilterHeaderStore(cfg.DataDir,
-		cfg.Database, headerfs.RegularFilter, &cfg.ChainParams)
+	s.RegFilterHeaders, err = headerfs.NewFilterHeaderStore(
+		cfg.DataDir, cfg.Database, headerfs.RegularFilter, &cfg.ChainParams,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -684,20 +745,73 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		})
 	}
 
+	s.utxoScanner = NewUtxoScanner(&UtxoScannerConfig{
+		BestSnapshot:       s.BestBlock,
+		GetBlockHash:       s.GetBlockHash,
+		BlockFilterMatches: s.blockFilterMatches,
+		GetBlock:           s.GetBlock,
+	})
+
 	return &s, nil
 }
 
-// BestSnapshot retrieves the most recent block's height and hash.
-func (s *ChainService) BestSnapshot() (*waddrmgr.BlockStamp, error) {
+// BestBlock retrieves the most recent block's height and hash where we
+// have both the header and filter header ready.
+func (s *ChainService) BestBlock() (*waddrmgr.BlockStamp, error) {
 	bestHeader, bestHeight, err := s.BlockHeaders.ChainTip()
 	if err != nil {
 		return nil, err
+	}
+
+	_, filterHeight, err := s.RegFilterHeaders.ChainTip()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter headers might lag behind block headers, so we can can fetch a
+	// previous block header if the filter headers are not caught up.
+	if filterHeight < bestHeight {
+		bestHeight = filterHeight
+		bestHeader, err = s.BlockHeaders.FetchHeaderByHeight(
+			bestHeight,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &waddrmgr.BlockStamp{
 		Height: int32(bestHeight),
 		Hash:   bestHeader.BlockHash(),
 	}, nil
+}
+
+// GetBlockHash returns the block hash at the given height.
+func (s *ChainService) GetBlockHash(height int64) (*chainhash.Hash, error) {
+	header, err := s.BlockHeaders.FetchHeaderByHeight(uint32(height))
+	if err != nil {
+		return nil, err
+	}
+	hash := header.BlockHash()
+	return &hash, err
+}
+
+// GetBlockHeader returns the block header for the given block hash, or an
+// error if the hash doesn't exist or is unknown.
+func (s *ChainService) GetBlockHeader(
+	blockHash *chainhash.Hash) (*wire.BlockHeader, error) {
+	header, _, err := s.BlockHeaders.FetchHeader(blockHash)
+	return header, err
+}
+
+// GetBlockHeight gets the height of a block by its hash. An error is returned
+// if the given block hash is unknown.
+func (s *ChainService) GetBlockHeight(hash *chainhash.Hash) (int32, error) {
+	_, height, err := s.BlockHeaders.FetchHeader(hash)
+	if err != nil {
+		return 0, err
+	}
+	return int32(height), nil
 }
 
 // BanPeer bans a peer that has already been connected to the server by ip.
@@ -732,9 +846,13 @@ func (s *ChainService) NetTotals() (uint64, uint64) {
 // rollBackToHeight rolls back all blocks until it hits the specified height.
 // It sends notifications along the way.
 func (s *ChainService) rollBackToHeight(height uint32) (*waddrmgr.BlockStamp, error) {
-	bs, err := s.BestSnapshot()
+	header, headerHeight, err := s.BlockHeaders.ChainTip()
 	if err != nil {
 		return nil, err
+	}
+	bs := &waddrmgr.BlockStamp{
+		Height: int32(headerHeight),
+		Hash:   header.BlockHash(),
 	}
 
 	_, regHeight, err := s.RegFilterHeaders.ChainTip()
@@ -752,10 +870,11 @@ func (s *ChainService) rollBackToHeight(height uint32) (*waddrmgr.BlockStamp, er
 
 		// Only roll back filter headers if they've caught up this far.
 		if uint32(bs.Height) <= regHeight {
-			_, err = s.RegFilterHeaders.RollbackLastBlock(newTip)
+			newFilterTip, err := s.RegFilterHeaders.RollbackLastBlock(newTip)
 			if err != nil {
 				return nil, err
 			}
+			regHeight = uint32(newFilterTip.Height)
 		}
 
 		bs, err = s.BlockHeaders.RollbackLastBlock()
@@ -791,13 +910,14 @@ func (s *ChainService) rollBackToHeight(height uint32) (*waddrmgr.BlockStamp, er
 // peers to and from the server, banning peers, and broadcasting messages to
 // peers.  It must be run in a goroutine.
 func (s *ChainService) peerHandler() {
-	// Start the address manager and block manager, both of which are needed
-	// by peers.  This is done here since their lifecycle is closely tied
-	// to this handler and rather than adding more channels to sychronize
-	// things, it's easier and slightly faster to simply start and stop them
-	// in this handler.
+	// Start the address manager and block manager, both of which are
+	// needed by peers.  This is done here since their lifecycle is closely
+	// tied to this handler and rather than adding more channels to
+	// synchronize things, it's easier and slightly faster to simply start
+	// and stop them in this handler.
 	s.addrManager.Start()
 	s.blockManager.Start()
+	s.utxoScanner.Start()
 
 	state := &peerState{
 		persistentPeers: make(map[int32]*ServerPeer),
@@ -810,11 +930,12 @@ func (s *ChainService) peerHandler() {
 		// Add peers discovered through DNS to the address manager.
 		connmgr.SeedFromDNS(&s.chainParams, RequiredServices,
 			s.nameResolver, func(addrs []*wire.NetAddress) {
-				// Bitcoind uses a lookup of the dns seeder here. This
-				// is rather strange since the values looked up by the
-				// DNS seed lookups will vary quite a lot.
-				// to replicate this behaviour we put all addresses as
-				// having come from the first one.
+				// Bitcoind uses a lookup of the dns seeder
+				// here. This is rather strange since the
+				// values looked up by the DNS seed lookups
+				// will vary quite a lot.  to replicate this
+				// behaviour we put all addresses as having
+				// come from the first one.
 				s.addrManager.AddAddresses(addrs, addrs[0])
 			})
 	}
@@ -853,6 +974,7 @@ out:
 	}
 
 	s.connManager.Stop()
+	s.utxoScanner.Stop()
 	s.blockManager.Stop()
 	s.addrManager.Stop()
 
@@ -1187,7 +1309,7 @@ func (s *ChainService) Stop() error {
 // IsCurrent lets the caller know whether the chain service's block manager
 // thinks its view of the network is current.
 func (s *ChainService) IsCurrent() bool {
-	return s.blockManager.IsCurrent()
+	return s.blockManager.IsFullySynced()
 }
 
 // PeerByAddr lets the caller look up a peer address in the service's peer

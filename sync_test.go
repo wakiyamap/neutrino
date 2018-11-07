@@ -326,7 +326,9 @@ func testRescan(harness *neutrinoHarness, t *testing.T) {
 		Value:    1000000000,
 	}
 	// Fee rate is satoshis per byte
-	tx1, err = harness.h1.CreateTransaction([]*wire.TxOut{&out1}, 1000)
+	tx1, err = harness.h1.CreateTransaction(
+		[]*wire.TxOut{&out1}, 1000, true,
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create transaction from script: %s", err)
 	}
@@ -351,7 +353,9 @@ func testRescan(harness *neutrinoHarness, t *testing.T) {
 		Value:    1000000000,
 	}
 	// Fee rate is satoshis per byte
-	tx2, err = harness.h1.CreateTransaction([]*wire.TxOut{&out2}, 1000)
+	tx2, err = harness.h1.CreateTransaction(
+		[]*wire.TxOut{&out2}, 1000, true,
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create transaction from script: %s", err)
 	}
@@ -389,7 +393,7 @@ func testRescan(harness *neutrinoHarness, t *testing.T) {
 			PkScript: script1,
 			OutPoint: ourOutPoint,
 		}),
-		neutrino.StartBlock(&waddrmgr.BlockStamp{Height: 801}),
+		neutrino.StartBlock(&waddrmgr.BlockStamp{Height: 1101}),
 	)
 	if err != nil {
 		t.Fatalf("Couldn't get UTXO %s: %s", ourOutPoint, err)
@@ -621,6 +625,9 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 	if err != nil {
 		t.Fatalf("Couldn't get UTXO %s: %s", ourOutPoint, err)
 	}
+	if spendReport.SpendingTx == nil {
+		t.Fatalf("Unable to find initial transaction")
+	}
 	if spendReport.SpendingTx.TxHash() != authTx1.Tx.TxHash() {
 		t.Fatalf("Redeeming transaction doesn't match expected "+
 			"transaction: want %s, got %s", authTx1.Tx.TxHash(),
@@ -752,8 +759,16 @@ func testRescanResults(harness *neutrinoHarness, t *testing.T) {
 	close(quitRescan)
 	err = <-errChan
 	quitRescan = nil
-	if err != nil {
+	if err != neutrino.ErrRescanExit {
 		t.Fatalf("Rescan ended with error: %s", err)
+	}
+
+	// Immediately try to add a new update to to the rescan that was just
+	// shut down. This should fail as it is no longer running.
+	rescan.WaitForShutdown()
+	err = rescan.Update(neutrino.AddAddrs(addr2), neutrino.Rewind(1095))
+	if err == nil {
+		t.Fatalf("Expected update call to fail, it did not")
 	}
 }
 
@@ -764,7 +779,7 @@ func testRescanResults(harness *neutrinoHarness, t *testing.T) {
 // TODO: Make this a benchmark instead.
 func testRandomBlocks(harness *neutrinoHarness, t *testing.T) {
 	var haveBest *waddrmgr.BlockStamp
-	haveBest, err := harness.svc.BestSnapshot()
+	haveBest, err := harness.svc.BestBlock()
 	if err != nil {
 		t.Fatalf("Couldn't get best snapshot from ChainService: %s", err)
 	}
@@ -803,8 +818,9 @@ func testRandomBlocks(harness *neutrinoHarness, t *testing.T) {
 				return
 			}
 			// Get block from network.
-			haveBlock, err := harness.svc.GetBlockFromNetwork(
-				blockHash, queryOptions...)
+			haveBlock, err := harness.svc.GetBlock(
+				blockHash, queryOptions...,
+			)
 			if err != nil {
 				errChan <- err
 				return
@@ -975,7 +991,9 @@ func TestNeutrinoSync(t *testing.T) {
 	rpcclient.UseLogger(rpcLogger)
 
 	// Create a btcd SimNet node and generate 800 blocks
-	h1, err := rpctest.New(&chaincfg.SimNetParams, nil, nil)
+	h1, err := rpctest.New(
+		&chaincfg.SimNetParams, nil, []string{"--txindex"},
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create harness: %s", err)
 	}
@@ -990,7 +1008,9 @@ func TestNeutrinoSync(t *testing.T) {
 	}
 
 	// Create a second btcd SimNet node
-	h2, err := rpctest.New(&chaincfg.SimNetParams, nil, nil)
+	h2, err := rpctest.New(
+		&chaincfg.SimNetParams, nil, []string{"--txindex"},
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create harness: %s", err)
 	}
@@ -1001,7 +1021,9 @@ func TestNeutrinoSync(t *testing.T) {
 	}
 
 	// Create a third btcd SimNet node and generate 1200 blocks
-	h3, err := rpctest.New(&chaincfg.SimNetParams, nil, nil)
+	h3, err := rpctest.New(
+		&chaincfg.SimNetParams, nil, []string{"--txindex"},
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create harness: %s", err)
 	}
@@ -1146,7 +1168,7 @@ func waitForSync(t *testing.T, svc *neutrino.ChainService,
 		t.Logf("Syncing to %d (%s)", knownBestHeight, knownBestHash)
 	}
 	var haveBest *waddrmgr.BlockStamp
-	haveBest, err = svc.BestSnapshot()
+	haveBest, err = svc.BestBlock()
 	if err != nil {
 		return fmt.Errorf("Couldn't get best snapshot from "+
 			"ChainService: %s", err)
@@ -1163,7 +1185,7 @@ func waitForSync(t *testing.T, svc *neutrino.ChainService,
 		}
 		time.Sleep(syncUpdate)
 		total += syncUpdate
-		haveBest, err = svc.BestSnapshot()
+		haveBest, err = svc.BestBlock()
 		if err != nil {
 			return fmt.Errorf("Couldn't get best snapshot from "+
 				"ChainService: %s", err)
