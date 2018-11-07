@@ -1,11 +1,11 @@
 package neutrino
 
 import (
+	"github.com/btcsuite/btclog"
 	"github.com/wakiyamap/monad/addrmgr"
 	"github.com/wakiyamap/monad/blockchain"
 	"github.com/wakiyamap/monad/peer"
 	"github.com/wakiyamap/monad/txscript"
-	"github.com/btcsuite/btclog"
 )
 
 // log is a logger that is initialized with no output filters.  This

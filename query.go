@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/wakiyamap/monad/blockchain"
 	"github.com/wakiyamap/monad/chaincfg/chainhash"
 	"github.com/wakiyamap/monad/wire"
 	"github.com/wakiyamap/monautil"
 	"github.com/wakiyamap/monautil/gcs"
 	"github.com/wakiyamap/monautil/gcs/builder"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/wakiyamap/neutrino/cache"
 	"github.com/wakiyamap/neutrino/filterdb"
 )
