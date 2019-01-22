@@ -1,5 +1,5 @@
-hash: 5d37ce5ebaa37fda1de91f521958ad973863641f778eab5c531b56ac057a7faa
-updated: 2018-11-08T01:02:01.114605269+09:00
+hash: bbe02f6167a7e6b92d410bc989d2828dea2cd67f6a02262cf9aa38d8550ad5fe
+updated: 2019-01-23T01:50:30.774473885+09:00
 imports:
 - name: github.com/aead/siphash
   version: 83563a290f60225eb120d724600b9690c3fb536f
@@ -65,7 +65,7 @@ imports:
 - name: github.com/kkdai/bstream
   version: f391b8402d23024e7c0f624b31267a89998fca95
 - name: github.com/wakiyamap/monad
-  version: 1480cfed9bb4a340755c9fd3061339435148945f
+  version: d338af5689992eeaa33c3d03785075e2ba5201d4
   subpackages:
   - addrmgr
   - blockchain
@@ -73,6 +73,7 @@ imports:
   - btcjson
   - chaincfg
   - chaincfg/chainhash
+  - checkpoint
   - connmgr
   - database
   - integration/rpctest
@@ -81,7 +82,7 @@ imports:
   - txscript
   - wire
 - name: github.com/wakiyamap/monautil
-  version: c1fba54cb210ffa57c4cb5e40fa09c789daa56b8
+  version: 650da7231055529d74538a0d76fbf5f06e1ad8e9
   subpackages:
   - base58
   - bech32
@@ -89,7 +90,7 @@ imports:
   - gcs/builder
   - hdkeychain
 - name: github.com/wakiyamap/monawallet
-  version: b2e8277fc2277c65de2ec663c7ba77d130b30364
+  version: 53eabf786b4b72af7351cf08664d8722a5177e31
   subpackages:
   - internal/helpers
   - internal/zero
@@ -100,6 +101,7 @@ imports:
   - wallet/txrules
   - walletdb
   - walletdb/bdb
+  - walletdb/migration
 - name: golang.org/x/crypto
   version: 9419663f5a44be8b34ca85f08abc5fe1be11f8a3
   subpackages:

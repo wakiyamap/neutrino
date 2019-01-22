@@ -1,3 +1,3 @@
 #!/bin/bash
 
-git checkout $(cat $GOPATH/src/github.com/wakiymapa/neutrino/glide.yaml | grep -A1 monad | tail -n1 | awk '{ print $2}')
+git checkout $(cat go.sum | grep -A1 github.com/wakiyamap/monad | tail -n1 | awk -F " " '{ print $2 }' | awk -F "-" '{ print $3 }' | awk -F "/" '{ print $1 }')
