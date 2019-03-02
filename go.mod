@@ -16,12 +16,15 @@ require (
 	github.com/dchest/blake256 v1.0.0
 	github.com/golang/protobuf v0.0.0-20180715082332-14aad3d5ea4c
 	github.com/jessevdk/go-flags v1.4.0
-	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec
-	github.com/wakiyamap/monad v0.0.0-20190117160027-d338af568999
+	github.com/kr/pretty v0.1.0 // indirect
+	github.com/wakiyamap/monad v0.0.0-20190206151653-13f106f09285
 	github.com/wakiyamap/monautil v0.0.0-20190122162447-650da7231055
 	github.com/wakiyamap/monawallet v0.0.0-20190122164901-53eabf786b4b
-	golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc
-	golang.org/x/net v0.0.0-20180719180050-a680a1efc54d
-	golang.org/x/sys v0.0.0-20180715085529-ac767d655b30
+	golang.org/x/crypto v0.0.0-20190211182817-74369b46fc67 // indirect
+	golang.org/x/net v0.0.0-20190206173232-65e2d4e15006 // indirect
+	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4 // indirect
+	golang.org/x/sys v0.0.0-20190209173611-3b5209105503 // indirect
 	google.golang.org/grpc v1.12.0
+	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+	gopkg.in/yaml.v2 v2.2.2 // indirect
 )

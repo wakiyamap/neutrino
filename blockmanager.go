@@ -162,6 +162,11 @@ type blockManager struct {
 	// peerChan is a channel for messages that come from peers
 	peerChan chan interface{}
 
+	// firstPeerSignal is a channel that's sent upon once the main daemon
+	// has made its first peer connection. We use this to ensure we don't
+	// try to perform any queries before we have our first peer.
+	firstPeerSignal <-chan struct{}
+
 	wg   sync.WaitGroup
 	quit chan struct{}
 
@@ -178,7 +183,9 @@ type blockManager struct {
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
 // processing asynchronous block and inv updates.
-func newBlockManager(s *ChainService) (*blockManager, error) {
+func newBlockManager(s *ChainService,
+	firstPeerSignal <-chan struct{}) (*blockManager, error) {
+
 	targetTimespan := int64(s.chainParams.TargetTimespan / time.Second)
 	targetTimePerBlock := int64(s.chainParams.TargetTimePerBlock / time.Second)
 	adjustmentFactor := s.chainParams.RetargetAdjustmentFactor
@@ -202,6 +209,7 @@ func newBlockManager(s *ChainService) (*blockManager, error) {
 		blocksPerRetarget:   int32(targetTimespan / targetTimePerBlock),
 		minRetargetTimespan: targetTimespan / adjustmentFactor,
 		maxRetargetTimespan: targetTimespan * adjustmentFactor,
+		firstPeerSignal:     firstPeerSignal,
 	}
 
 	// Next we'll create the two signals that goroutines will use to wait
@@ -259,7 +267,22 @@ func (b *blockManager) Start() {
 	log.Trace("Starting block manager")
 	b.wg.Add(2)
 	go b.blockHandler()
-	go b.cfHandler()
+	go func() {
+		defer b.wg.Done()
+
+		log.Debug("Waiting for peer connection...")
+
+		// Before starting the cfHandler we want to make sure we are
+		// connected with at least one peer.
+		select {
+		case <-b.firstPeerSignal:
+		case <-b.quit:
+			return
+		}
+
+		log.Debug("Peer connected, starting cfHandler.")
+		b.cfHandler()
+	}()
 }
 
 // Stop gracefully shuts down the block manager by stopping all asynchronous
@@ -407,12 +430,7 @@ func (b *blockManager) handleDonePeerMsg(peers *list.List, sp *ServerPeer) {
 // run as a goroutine. It requests and processes cfheaders messages in a
 // separate goroutine from the peer handlers.
 func (b *blockManager) cfHandler() {
-	// If a loop ends with a quit, we want to signal that the goroutine is
-	// done.
-	defer func() {
-		log.Trace("Committed filter header handler done")
-		b.wg.Done()
-	}()
+	defer log.Trace("Committed filter header handler done")
 
 	var (
 		// allCFCheckpoints is a map from our peers to the list of
@@ -845,7 +863,12 @@ func (b *blockManager) getCheckpointedCFHeaders(checkpoints []*chainhash.Hash,
 		currentInterval++
 	}
 
-	log.Infof("Attempting to query for %v cfheader batches", len(queryMsgs))
+	batchesCount := len(queryMsgs)
+	if batchesCount == 0 {
+		return
+	}
+
+	log.Infof("Attempting to query for %v cfheader batches", batchesCount)
 
 	// With the set of messages constructed, we'll now request the batch
 	// all at once. This message will distributed the header requests

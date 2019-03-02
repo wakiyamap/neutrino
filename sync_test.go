@@ -296,7 +296,7 @@ var (
 	rescan                    *neutrino.Rescan
 	startBlock                waddrmgr.BlockStamp
 	secSrc                    *secSource
-	addr1, addr2, addr3       btcutil.Address
+	addr1, addr2, addr3       monautil.Address
 	script1, script2, script3 []byte
 	tx1, tx2, tx3             *wire.MsgTx
 	ourOutPoint               wire.OutPoint
