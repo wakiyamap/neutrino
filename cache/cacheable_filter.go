@@ -1,6 +1,16 @@
 package cache
 
-import "github.com/wakiyamap/monautil/gcs"
+import (
+	"github.com/wakiyamap/monad/chaincfg/chainhash"
+	"github.com/wakiyamap/monautil/gcs"
+	"github.com/wakiyamap/neutrino/filterdb"
+)
+
+// FilterCacheKey represents the key used to access filters in the FilterCache.
+type FilterCacheKey struct {
+	BlockHash  chainhash.Hash
+	FilterType filterdb.FilterType
+}
 
 // CacheableFilter is a wrapper around Filter type which provides a Size method
 // used by the cache to target certain memory usage.
