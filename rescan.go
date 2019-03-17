@@ -52,7 +52,7 @@ type ChainSource interface {
 	GetBlockHeader(*chainhash.Hash) (*wire.BlockHeader, uint32, error)
 
 	// GetBlock returns the block with the given hash.
-	GetBlock(chainhash.Hash, ...QueryOption) (*btcutil.Block, error)
+	GetBlock(chainhash.Hash, ...QueryOption) (*monautil.Block, error)
 
 	// GetFilterHeaderByHeight returns the filter header of the block with
 	// the given height.

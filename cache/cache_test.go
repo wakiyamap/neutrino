@@ -36,7 +36,7 @@ func TestBlockFilterCaches(t *testing.T) {
 	var (
 		blockHashes []chainhash.Hash
 		filters     []*gcs.Filter
-		blocks      []*btcutil.Block
+		blocks      []*monautil.Block
 	)
 	for i := 0; i < numElements; i++ {
 		var blockHash chainhash.Hash
@@ -61,7 +61,7 @@ func TestBlockFilterCaches(t *testing.T) {
 		}
 
 		msgBlock := &wire.MsgBlock{}
-		block := btcutil.NewBlock(msgBlock)
+		block := monautil.NewBlock(msgBlock)
 		blocks = append(blocks, block)
 
 		// Add the block to the block caches, using the block INV
