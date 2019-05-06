@@ -70,9 +70,13 @@ var (
 	// from DNS.
 	DisableDNSSeed = false
 
-	// DefaultFilterCacheSize is the size (in bytes) of filters neutrino will
-	// keep in memory if no size is specified in the neutrino.Config.
-	DefaultFilterCacheSize uint64 = 4096 * 1000
+	// DefaultFilterCacheSize is the size (in bytes) of filters neutrino
+	// will keep in memory if no size is specified in the neutrino.Config.
+	// Since we utilize the cache during batch filter fetching, it is
+	// beneficial if it is able to to keep a whole batch. The current batch
+	// size is 1000, so we default to 30 MB, which can fit about 1450 to
+	// 2300 mainnet filters.
+	DefaultFilterCacheSize uint64 = 3120 * 10 * 1000
 
 	// DefaultBlockCacheSize is the size (in bytes) of blocks neutrino will
 	// keep in memory if no size is specified in the neutrino.Config.
@@ -262,9 +266,14 @@ func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	if peerServices&wire.SFNodeWitness != wire.SFNodeWitness ||
 		peerServices&wire.SFNodeCF != wire.SFNodeCF {
 
-		log.Infof("Disconnecting peer %v, cannot serve compact "+
+		log.Infof("Removing peer %v, cannot serve compact "+
 			"filters", sp)
-		sp.Disconnect()
+
+		sp.server.BanPeer(sp)
+		if sp.connReq != nil {
+			sp.server.connManager.Remove(sp.connReq.ID())
+		}
+
 		return nil
 	}
 
@@ -697,10 +706,32 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	var newAddressFunc func() (net.Addr, error)
 	if s.chainParams.Net != chaincfg.SimNetParams.Net {
 		newAddressFunc = func() (net.Addr, error) {
+
+			// Gather our set of currently connected peers to avoid
+			// connecting to them again.
+			connectedPeers := make(map[string]struct{})
+			for _, peer := range s.Peers() {
+				peerAddr := addrmgr.NetAddressKey(peer.NA())
+				connectedPeers[peerAddr] = struct{}{}
+			}
+
 			for tries := 0; tries < 100; tries++ {
 				addr := s.addrManager.GetAddress()
 				if addr == nil {
 					break
+				}
+
+				// Ignore peers that we've already banned.
+				addrString := addrmgr.NetAddressKey(addr.NetAddress())
+				if s.IsBanned(addrString) {
+					log.Debugf("Ignoring banned peer: %v", addrString)
+					continue
+				}
+
+				// Skip any addresses that correspond to our set
+				// of currently connected peers.
+				if _, ok := connectedPeers[addrString]; ok {
+					continue
 				}
 
 				// The peer behind this address should support
@@ -732,7 +763,6 @@ func NewChainService(cfg Config) (*ChainService, error) {
 					continue
 				}
 
-				addrString := addrmgr.NetAddressKey(addr.NetAddress())
 				return s.addrStringToNetAddr(addrString)
 			}
 
@@ -797,6 +827,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		SubscribeBlocks: func() (*blockntfns.Subscription, error) {
 			return s.blockSubscriptionMgr.NewSubscription(0)
 		},
+		RebroadcastInterval: pushtx.DefaultRebroadcastInterval,
 	})
 
 	return &s, nil
@@ -1110,6 +1141,38 @@ func (s *ChainService) handleUpdatePeerHeights(state *peerState, umsg updatePeer
 	})
 }
 
+// isBanned returns true if the passed peer address is still considered to be
+// banned.
+func (s *ChainService) isBanned(addr string, state *peerState) bool {
+	// First, we'll extract the host so we can consider it without taking
+	// into account the target port.
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		log.Debugf("can't split host/port: %s", err)
+		return false
+	}
+
+	// With the host obtained, we'll check on the ban status of this peer.
+	if banEnd, ok := state.banned[host]; ok {
+		// If the ban duration of this peer is still active, then we'll
+		// ignore it for now as it's still banned.
+		if time.Now().Before(banEnd) {
+			log.Debugf("Peer %s is banned for another %v - ignoring",
+				host, banEnd.Sub(time.Now()))
+			return true
+		}
+
+		// Otherwise, the peer was banned in the past, but is no longer
+		// banned, so we'll remove this ban entry and return back to
+		// the caller.
+		log.Infof("Peer %s is no longer banned", host)
+		delete(state.banned, host)
+		return false
+	}
+
+	return false
+}
+
 // handleAddPeerMsg deals with adding new peers.  It is invoked from the
 // peerHandler goroutine.
 func (s *ChainService) handleAddPeerMsg(state *peerState, sp *ServerPeer) bool {
@@ -1125,22 +1188,9 @@ func (s *ChainService) handleAddPeerMsg(state *peerState, sp *ServerPeer) bool {
 	}
 
 	// Disconnect banned peers.
-	host, _, err := net.SplitHostPort(sp.Addr())
-	if err != nil {
-		log.Debugf("can't split host/port: %s", err)
+	if s.isBanned(sp.Addr(), state) {
 		sp.Disconnect()
 		return false
-	}
-	if banEnd, ok := state.banned[host]; ok {
-		if time.Now().Before(banEnd) {
-			log.Debugf("Peer %s is banned for another %v - disconnecting",
-				host, banEnd.Sub(time.Now()))
-			sp.Disconnect()
-			return false
-		}
-
-		log.Infof("Peer %s is no longer banned", host)
-		delete(state.banned, host)
 	}
 
 	// TODO: Check for max peers from a single IP.
@@ -1195,7 +1245,14 @@ func (s *ChainService) handleDonePeerMsg(state *peerState, sp *ServerPeer) {
 	}
 
 	if sp.connReq != nil {
-		s.connManager.Disconnect(sp.connReq.ID())
+		// If the peer has been banned, we'll remove the connection
+		// request from the manager to ensure we don't reconnect again.
+		// Otherwise, we'll just simply disconnect.
+		if s.isBanned(sp.connReq.Addr.String(), state) {
+			s.connManager.Remove(sp.connReq.ID())
+		} else {
+			s.connManager.Disconnect(sp.connReq.ID())
+		}
 	}
 
 	// Update the address' last seen time if the peer has acknowledged
@@ -1293,8 +1350,23 @@ func newPeerConfig(sp *ServerPeer) *peer.Config {
 // request instance and the connection itself, and finally notifies the address
 // manager of the attempt.
 func (s *ChainService) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
+	// If the peer is banned, then we'll disconnect them.
+	peerAddr := c.Addr.String()
+	if s.IsBanned(peerAddr) {
+		// Remove will end up closing the connection.
+		s.connManager.Remove(c.ID())
+		return
+	}
+
+	// If we're already connected to this peer, then we'll close out the new
+	// connection and keep the old.
+	if s.PeerByAddr(peerAddr) != nil {
+		conn.Close()
+		return
+	}
+
 	sp := newServerPeer(s, c.Permanent)
-	p, err := peer.NewOutboundPeer(newPeerConfig(sp), c.Addr.String())
+	p, err := peer.NewOutboundPeer(newPeerConfig(sp), peerAddr)
 	if err != nil {
 		log.Debugf("Cannot create outbound peer %s: %s", c.Addr, err)
 		s.connManager.Disconnect(c.ID())

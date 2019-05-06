@@ -420,7 +420,10 @@ func rescan(chain ChainSource, options ...RescanOption) error {
 	// blockReFetchTimer is a stoppable timer that we'll use to reminder
 	// ourselves to refetch a block in the case that we're unable to fetch
 	// the filter for a block the first time around.
-	var blockReFetchTimer *time.Timer
+	var (
+		blockReFetchTimer *time.Timer
+		reFetchMtx        sync.Mutex
+	)
 
 	resetBlockReFetchTimer := func(headerTip wire.BlockHeader, height uint32) {
 		// If so, then we'll avoid notifying the block, and will
@@ -433,9 +436,22 @@ func rescan(chain ChainSource, options ...RescanOption) error {
 		log.Infof("Setting timer to attempt to re-fetch filter for "+
 			"hash=%v, height=%v", headerTip.BlockHash(), height)
 
-		// We'll start a timer to re-send this header so we re-process
-		// if in the case that we don't get a re-org soon afterwards.
-		blockReFetchTimer = time.AfterFunc(blockRetryInterval, func() {
+		blockReFetch := func() {
+			// If we're unable to process notifications at the
+			// moment (due to not being current), we'll reset our
+			// timer.
+			reFetchMtx.Lock()
+			if blockReFetchTimer != nil && blockSubscription == nil {
+				if !blockReFetchTimer.Stop() {
+					<-blockReFetchTimer.C
+				}
+				blockReFetchTimer.Reset(blockRetryInterval)
+
+				reFetchMtx.Unlock()
+				return
+			}
+			reFetchMtx.Unlock()
+
 			log.Infof("Resending rescan header for block hash=%v, "+
 				"height=%v", headerTip.BlockHash(), height)
 
@@ -444,7 +460,15 @@ func rescan(chain ChainSource, options ...RescanOption) error {
 			case blockSubscription.Notifications <- ntfn:
 			case <-ro.quit:
 			}
-		})
+		}
+
+		// We'll start a timer to re-send this header so we re-process
+		// if in the case that we don't get a re-org soon afterwards.
+		reFetchMtx.Lock()
+		blockReFetchTimer = time.AfterFunc(
+			blockRetryInterval, blockReFetch,
+		)
+		reFetchMtx.Unlock()
 	}
 
 	// We'll need to keep track of whether we are current with the chain in
@@ -563,9 +587,13 @@ func rescan(chain ChainSource, options ...RescanOption) error {
 			return err
 		}
 
-		// We'll successfully fetched this current block, so we'll reset
+		// We've successfully fetched this current block, so we'll reset
 		// the retry timer back to nil.
-		blockReFetchTimer = nil
+		if blockReFetchTimer != nil {
+			blockReFetchTimer.Stop()
+			blockReFetchTimer = nil
+		}
+
 		return nil
 	}
 
@@ -601,7 +629,7 @@ func rescan(chain ChainSource, options ...RescanOption) error {
 		curStamp.Height--
 
 		// Now that we got a re-org, if we had a re-fetch timer going,
-		// we'll re-set is at the new header tip.
+		// we'll reset it be at the new header tip.
 		if blockReFetchTimer != nil {
 			resetBlockReFetchTimer(
 				curHeader, uint32(curStamp.Height),
@@ -731,7 +759,7 @@ rescanLoop:
 
 				current = true
 
-				// Ensure we cancel the old subscroption if
+				// Ensure we cancel the old subscription if
 				// we're going back to scan for missed blocks.
 				if blockSubscription != nil {
 					blockSubscription.Cancel()
@@ -953,7 +981,14 @@ func blockFilterMatches(chain ChainSource, ro *rescanOptions,
 	blockHash *chainhash.Hash) (bool, error) {
 
 	// TODO(roasbeef): need to ENSURE always get filter
-	filter, err := chain.GetCFilter(*blockHash, wire.GCSFilterRegular)
+
+	// Since this method is called when we are not current, and from the
+	// utxoscanner, we expect more calls to follow for the subsequent
+	// filters. To speed up the fetching, we make an optimistic batch
+	// query.
+	filter, err := chain.GetCFilter(
+		*blockHash, wire.GCSFilterRegular, OptimisticBatch(),
+	)
 	if err != nil {
 		if err == headerfs.ErrHashNotFound {
 			// Block has been reorged out from under us.
