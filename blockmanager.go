@@ -23,6 +23,9 @@ import (
 	"github.com/lightninglabs/neutrino/blockntfns"
 	"github.com/lightninglabs/neutrino/headerfs"
 	"github.com/lightninglabs/neutrino/headerlist"
+	monablockchain "github.com/wakiyamap/monad/blockchain"
+	monawire "github.com/wakiyamap/monad/wire"
+	monautil "github.com/wakiyamap/monautil"
 )
 
 const (
@@ -2423,8 +2426,27 @@ func (b *blockManager) checkHeaderSanity(blockHeader *wire.BlockHeader,
 	stubBlock := btcutil.NewBlock(&wire.MsgBlock{
 		Header: *blockHeader,
 	})
-	err = blockchain.CheckProofOfWork(stubBlock,
-		blockchain.CompactToBig(diff))
+
+	isMonacoin := func(magic wire.BitcoinNet) bool {
+		return monawire.BitcoinNet(magic) == monawire.MainNet ||
+			monawire.BitcoinNet(magic) == monawire.TestNet4 ||
+			monawire.BitcoinNet(magic) == monawire.SimNet
+	}
+	if isMonacoin(b.server.chainParams.Net) {
+		stubBytes, err := stubBlock.Bytes()
+		if err != nil {
+			return err
+		}
+		monaBlock, err := monautil.NewBlockFromBytes(stubBytes)
+		if err != nil {
+			return err
+		}
+		bigDiff := blockchain.CompactToBig(b.server.chainParams.PowLimitBits)
+		err = monablockchain.CheckProofOfWork(monaBlock, bigDiff)
+	} else {
+		err = blockchain.CheckProofOfWork(stubBlock,
+			blockchain.CompactToBig(diff))
+	}
 	if err != nil {
 		return err
 	}
