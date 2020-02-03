@@ -1,3 +1,8 @@
+## Attention
+This repository is old.
+Please use the following URL for monacoin's neutrino.
+https://github.com/monasuite/neutrino
+
 # Neutrino: Privacy-Preserving Bitcoin Light Client
 
 [![Build Status](https://travis-ci.org/wakiyamap/neutrino.svg?branch=master)](https://travis-ci.org/wakiyamap/neutrino)
